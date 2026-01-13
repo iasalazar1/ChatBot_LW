@@ -1,16 +1,16 @@
 import streamlit as st
 from backend import handle_query
 from data_loader import load_data
-from vector_store import inicialize_vector_store
+from vector_store import initialize_vector_store
 
 # Configuración de la página y estilos personalizados
 st.set_page_config(page_title="Gym Assistant Bot", page_icon=":robot_face:")
 
-# Inicializar datos y vetor store
+# Inicializar datos y vector store
 data = load_data()
 
 if data:
-    vector_store = inicialize_vector_store(data)
+    vector_store = initialize_vector_store(data)
     print("termino la carga de datos")
 else:
     print("error al cargar datos")
