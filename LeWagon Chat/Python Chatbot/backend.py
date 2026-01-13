@@ -1,52 +1,68 @@
-
-from langchain.chains import ConversationalRetrievalChain
-from langchain_openai import ChatOpenAI
-from vector_store import load_vector_store
-from langchain.prompts import PromptTemplate
 import yaml
+import os
+from langchain.chains import ConversationalRetrievalChain
+from langchain_openai import ChatOpenAI  # <--- CAMBIO IMPORTANTE: guion bajo
+from langchain.prompts import PromptTemplate
+from vector_store import load_vector_store
 from prompts import SYSTEM_TEMPLATE
 
-# Cargar configuración desde config.yaml
-with open("config.yaml", "r") as file:
-    config = yaml.safe_load(file)
+def load_config():
+    if os.path.exists("config.yaml"):
+        with open("config.yaml", "r") as file:
+            return yaml.safe_load(file)
+    return {}
+
+config = load_config()
 
 def handle_query(query, messages):
-    # 1 CONFIGURACION DEL LLM
-    llm = ChatOpenAI(
-        model_name = "gpt-3.5-turbo",
-        temperature = 0.7,
-        openai_api_key = config["openai_api_key"])
+    # Validar API Key antes de empezar
+    api_key = config.get("openai_api_key")
+    if not api_key:
+        return "Error: No se encontró la API Key en config.yaml"
 
-    # 2 RETRIEVAL: Obtener el vector store para búsqueda
+    try:
+        # 1. Configuración del LLM
+        llm = ChatOpenAI(
+            model_name="gpt-3.5-turbo",
+            temperature=0.7,
+            openai_api_key=api_key
+        )
 
-    # 3 AUGMENTATION: Configurar el prompt que combinará el contexto recuperado
-    prompt = PromptTemplate(
-        tamplate = SYSTEM_TEMPLATE,
-        input_variables = ["context", "chat_history", "question"]
-    )
+        # 2. Cargar Vector Store
+        vector_store = load_vector_store()
+        if not vector_store:
+            return "Lo siento, no puedo acceder a mi base de conocimientos en este momento."
 
-    # 4 GENERATION: Crear la cadena que combina recuperaciòn y generación
-    chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=vector_store.as_retriever(search_kwargs={"k": 3}),
-        combine_docs_chain_kwargs={"prompt": prompt},
-        return_source_documents=True,
-        verbose=True
-    )
+        # 3. Configurar Prompt
+        prompt = PromptTemplate(
+            template=SYSTEM_TEMPLATE,
+            input_variables=["context", "chat_history", "question"]
+        )
 
-    # Formatear el historial
-    formatted_history = []
-    for msg in messages[1:]:
-        if isinstance(msg, dict):
-             formatted_history.append((msg["content"], ""))
+        # 4. Crear cadena
+        chain = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=vector_store.as_retriever(search_kwargs={"k": 3}),
+            combine_docs_chain_kwargs={"prompt": prompt},
+            return_source_documents=True,
+            verbose=True
+        )
 
-        try:
-            result = chain.invoke({
-                "question" : query,
-                "chat history" : formatted_history
-                })
+        # 5. Formatear historial correctamente
+        formatted_history = []
+        for i in range(1, len(messages)-1, 2):
+            user_msg = messages[i]["content"]
+            bot_msg = messages[i+1]["content"] if (i+1) < len(messages) else ""
+            formatted_history.append((user_msg, bot_msg))
 
-            return result [answer]
-        except Exception as e:
-            return """ Hola. Soy el asistente especializado de DreamGym.
-            Disculpa, tuve un problema técnico. ¿Podrías reformular tu pregunta?"""
+        # 6. Invocar cadena
+        result = chain.invoke({
+            "question": query,
+            "chat_history": formatted_history
+        })
+
+        return result["answer"]
+
+    except Exception as e:
+        print(f"Error en handle_query: {e}")
+        return "Disculpa, ocurrió un problema técnico procesando tu pregunta."
