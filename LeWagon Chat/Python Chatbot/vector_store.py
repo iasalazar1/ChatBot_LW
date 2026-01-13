@@ -1,65 +1,68 @@
-from langchainn.openai import OpenAIEmbeddings
-from langchain.chroma import Chroma
+import os
 import yaml
+from langchain_openai import OpenAIEmbeddings
+from langchain_chroma import Chroma  # <--- CAMBIO IMPORTANTE: guion bajo
 
-# Cargar configuración desde config.yaml
-with open("config.yaml", "r") as file:
-    config = yaml.safe_load(file)
+# Función segura para cargar config
+def load_config():
+    if not os.path.exists("config.yaml"):
+        return None
+    with open("config.yaml", "r") as file:
+        return yaml.safe_load(file)
+
+config = load_config()
+api_key = config.get("openai_api_key") if config else None
 
 def initialize_vector_store(data):
-    """
-    Crea un almacén vectorial desde datos iniciales
-    """
     print("\n=== Inicializando Vector Store ===")
-        
-    if not data:
-        print("ERROR: No hay datos para inicializar el vector store.")
+    if not data or not api_key:
+        print("Error: Faltan datos o API Key")
         return None
 
     try:
-        embeddings = OpenAIEmbeddings(openai_api_key=config["openai_api_key"])
-        #text-embedding-ada-002
-
-        # Crear chunks más pequeños para mejor búsqueda
+        embeddings = OpenAIEmbeddings(openai_api_key=api_key)
+        
         texts = []
         for item in data:
-            paragraphs = item["text"].split("\n\n")
+            # Limpieza básica para evitar chunks vacíos
+            paragraphs = item["text"].split("\n")
+            for p in paragraphs:
+                if p.strip():
+                    texts.append(p.strip())
 
-            for paragraph in paragraphs:
-                texts.append(paragraph.strip())
-
-            print("\n=== Contenido a Indexar ===")
-        for i, text in enumerate(texts, 1):
-             print(f"Chunk {i}:")
-             print(text)
-             print("\n")
+        if not texts:
+            print("No se extrajo texto válido del PDF")
+            return None
 
         vector_store = Chroma.from_texts(
-        texts = texts,
-        embedding = embeddings,
-        persist_directory = "vector_store"
+            texts=texts,
+            embedding=embeddings,
+            persist_directory="vector_store"
         )
-        print("\nVector Store crado y persistido correctamente")
+        print("Vector Store creado exitosamente")
         return vector_store
 
     except Exception as e:
-        print(f"Error al crear el vector store: {str(e)}")
+        print(f"Error al crear vector store: {str(e)}")
         return None
   
 def load_vector_store():
-    """
-    Carga el almacén vectorial para bùsqueda semántica
-    """
-    try:
-        embeddings = OpenAIEmbeddings(openia_api_key=config["openai_api_key"])
-        vector_store = Chroma(
-            embedding_function = embeddings,
-            persist_directory = "vector_store"
-        )
+    if not api_key:
+        print("Error: No hay API Key cargada")
+        return None
 
-        print("Vector store cargado exitosamente")
+    try:
+        embeddings = OpenAIEmbeddings(openai_api_key=api_key)
+        
+        if not os.path.exists("vector_store"):
+            print("No existe el directorio vector_store. Ejecuta la carga primero.")
+            return None
+
+        vector_store = Chroma(
+            embedding_function=embeddings,
+            persist_directory="vector_store"
+        )
         return vector_store
     except Exception as e:
-        print(f"Error al cargar el vector store: {str(e)}")
+        print(f"Error al cargar vector store: {str(e)}")
         return None
-    
